@@ -1,0 +1,68 @@
+# .github/workflows/mlb_harvest.yml
+#
+# Runs the MLB data harvest script every day at 10:00 AM Central Time
+# (15:00 UTC, accounting for CDT; adjust to 16:00 UTC during CST Nov-Mar).
+#
+# The workflow can also be triggered manually from the GitHub Actions tab
+# using the "Run workflow" button — useful for backfilling a missed day.
+#
+# REQUIRED GITHUB SECRETS (Settings → Secrets and variables → Actions):
+#   AZURE_CLIENT_ID      — Your Azure app registration client ID
+#   AZURE_CLIENT_SECRET  — Your Azure app registration client secret
+#   AZURE_TENANT_ID      — Your Azure AD / Entra ID tenant ID
+#   ONEDRIVE_USER        — OneDrive user, typically "me" for personal accounts
+#
+# This workflow runs on public repository infrastructure, which is free
+# with no monthly minute limits per GitHub's billing policy for public repos.
+
+name: MLB Daily Harvest
+
+on:
+  schedule:
+    # Runs at 15:00 UTC = 10:00 AM CDT (Central Daylight Time, Mar–Nov)
+    # Change to "0 16 * * *" during standard time (Nov–Mar) if you want
+    # a consistent 10 AM CT local time year-round. Or just leave it at
+    # 15:00 UTC and accept a 1-hour seasonal drift — won't affect the data.
+    - cron: "0 15 * * *"
+
+  # Allows you to run this workflow manually from the Actions tab.
+  # Useful for testing, re-running a failed day, or backfilling.
+  workflow_dispatch:
+
+jobs:
+  harvest:
+    name: Harvest MLB Data
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the repository so the runner has access to mlb_harvest.py
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Set up the Python version. 3.11+ is recommended for the
+      # dict | None union type hint syntax used in the script.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Step 3: Install dependencies. The versions are pinned here so that
+      # a library update can't silently break the harvest. Update versions
+      # intentionally after testing.
+      - name: Install dependencies
+        run: |
+          pip install \
+            MLB-StatsAPI==1.7.2 \
+            openpyxl==3.1.2 \
+            requests==2.31.0 \
+            msal==1.28.0
+
+      # Step 4: Run the harvest script, injecting secrets as environment variables.
+      # Secrets are never echoed in logs.
+      - name: Run MLB harvest
+        env:
+          AZURE_CLIENT_ID:     ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID:     ${{ secrets.AZURE_TENANT_ID }}
+          ONEDRIVE_USER:       ${{ secrets.ONEDRIVE_USER }}
+        run: python mlb_harvest.py
