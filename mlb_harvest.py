@@ -263,7 +263,7 @@ def fetch_standings(target_date: date) -> list[dict]:
 GAME_RESULTS_COLUMNS = [
     "GameDate", "Season", "GameType", "SeriesDesc", "SeriesGameNum",
     "GameNumber", "GameID", "Team", "HomeAway", "Opponent",
-    "RunsScored", "RunsAllowed", "Win", "Loss",
+    "RunsScored", "RunsAllowed", "Win", "Loss", "GameSeq",
 ]
 
 # Column definitions for Standings sheet
@@ -426,14 +426,83 @@ def put_onedrive_file(token: str, file_name: str, file_bytes: bytes) -> None:
 # MAIN ORCHESTRATION
 # ---------------------------------------------------------------------------
 
+def assign_game_sequence(new_rows: list[dict], existing_rows: list[dict]) -> list[dict]:
+    """
+    Assigns GameSeq to each new row — the cumulative number of games that
+    team has played through that game, counting all prior history plus today.
+
+    Works correctly for both daily runs and backfills because it reads the
+    existing workbook rows first to get each team's current game count before
+    incrementing for the new rows.
+
+    Handles doubleheaders correctly because new_rows is already ordered by
+    GameDate + GameNumber from fetch_game_results(), so game 1 of a
+    doubleheader always gets a lower GameSeq than game 2.
+    """
+    from collections import defaultdict
+
+    # Build a count of games already recorded per team from the existing workbook.
+    # Each row in GameResults represents one team's appearance in one game,
+    # so a simple row count per team gives us games played.
+    game_counts = defaultdict(int)
+    for row in existing_rows:
+        game_counts[row["Team"]] += 1
+
+    # Sort new rows by date then game number so doubleheader sequencing is correct
+    new_rows_sorted = sorted(
+        new_rows,
+        key=lambda r: (r["GameDate"], r["GameNumber"])
+    )
+
+    # Assign the next sequence number for each team
+    for row in new_rows_sorted:
+        team = row["Team"]
+        game_counts[team] += 1
+        row["GameSeq"] = game_counts[team]
+
+    return new_rows_sorted
+
+
+def read_rows_from_workbook(wb: openpyxl.Workbook, columns: list[str]) -> list[dict]:
+    """
+    Reads all data rows from the 'Data' sheet of an existing workbook and
+    returns them as a list of dicts keyed by column name.
+
+    Row 1 is always the header row and is skipped.
+    Used by process_file to read existing GameResults rows before appending,
+    so assign_game_sequence can correctly compute GameSeq.
+    """
+    ws   = wb["Data"]
+    rows = []
+
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        # Skip completely empty rows (can appear at end of file)
+        if not any(row):
+            continue
+        row_dict = {
+            col: row[idx]
+            for idx, col in enumerate(columns)
+            if idx < len(row)
+        }
+        rows.append(row_dict)
+
+    return rows
+
+
 def process_file(token: str, file_name: str, new_rows: list[dict],
                  columns: list[str], key_map: dict | None = None) -> None:
     """
     Full round-trip for one Excel file:
       1. Try to download existing file from OneDrive
       2. If not found, create a new workbook with headers
-      3. Append today's new rows
-      4. Upload the updated workbook back to OneDrive
+      3. For GameResults only: read existing rows back out so assign_game_sequence
+         can compute the correct GameSeq values before appending
+      4. Append today's new rows
+      5. Upload the updated workbook back to OneDrive
+
+    The key_map parameter is only used for Standings, where the dict keys
+    returned by fetch_standings() differ from the Excel column header names.
+    GameResults dict keys match column names directly so key_map is None.
     """
     if not new_rows:
         log.warning(f"No new rows to append to '{file_name}'. Skipping upload.")
@@ -448,11 +517,20 @@ def process_file(token: str, file_name: str, new_rows: list[dict],
         wb = build_workbook_from_scratch(columns)
         log.info(f"Created new workbook for '{file_name}'.")
 
-    # Step 2: Append new rows
+    # Step 2: For GameResults, read existing rows back out of the workbook
+    # so assign_game_sequence knows each team's current game count.
+    # Standings doesn't need this so we skip it when key_map is present.
+    if key_map is None:
+        existing_rows = read_rows_from_workbook(wb, columns)
+        log.info(f"Read {len(existing_rows)} existing rows from '{file_name}'.")
+        new_rows = assign_game_sequence(new_rows, existing_rows)
+        log.info(f"GameSeq assigned to {len(new_rows)} new rows.")
+
+    # Step 3: Append new rows
     n = append_rows_to_workbook(wb, new_rows, columns, key_map)
     log.info(f"Appended {n} rows to '{file_name}'.")
 
-    # Step 3: Serialize workbook to bytes and upload
+    # Step 4: Serialize workbook to bytes and upload
     buf = io.BytesIO()
     wb.save(buf)
     put_onedrive_file(token, file_name, buf.getvalue())
