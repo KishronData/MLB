@@ -77,45 +77,6 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-def debug_onedrive(token: str) -> None:
-    """
-    Temporary diagnostic function — remove after confirming OneDrive access works.
-    Tests three things in sequence:
-      1. Can we reach Graph API and get basic user/drive info?
-      2. Can we list the target folder contents?
-      3. Can we upload a tiny test file?
-    """
-    drive_path = f"/me/drive" if ONEDRIVE_USER == "me" else f"/users/{ONEDRIVE_USER}/drive"
-    headers = {"Authorization": f"Bearer {token}"}
-
-    # Test 1: Get drive info
-    log.info("--- DEBUG: Fetching drive info ---")
-    resp = requests.get(
-        f"https://graph.microsoft.com/v1.0{drive_path}",
-        headers=headers
-    )
-    log.info(f"Drive info status: {resp.status_code}")
-    log.info(f"Drive info response: {resp.text[:500]}")
-
-    # Test 2: List the target folder
-    log.info(f"--- DEBUG: Listing folder '{ONEDRIVE_FOLDER}' ---")
-    resp = requests.get(
-        f"https://graph.microsoft.com/v1.0{drive_path}/root:/{ONEDRIVE_FOLDER}:/children",
-        headers=headers
-    )
-    log.info(f"Folder list status: {resp.status_code}")
-    log.info(f"Folder list response: {resp.text[:500]}")
-
-    # Test 3: Upload a tiny test file
-    log.info("--- DEBUG: Uploading test file ---")
-    resp = requests.put(
-        f"https://graph.microsoft.com/v1.0{drive_path}/root:/{ONEDRIVE_FOLDER}/test_upload.txt:/content",
-        headers={**headers, "Content-Type": "text/plain"},
-        data=b"test"
-    )
-    log.info(f"Upload status: {resp.status_code}")
-    log.info(f"Upload response: {resp.text[:500]}")
-
 # ---------------------------------------------------------------------------
 # DATE HELPERS
 # ---------------------------------------------------------------------------
@@ -497,49 +458,37 @@ def process_file(token: str, file_name: str, new_rows: list[dict],
     put_onedrive_file(token, file_name, buf.getvalue())
 
 
-#def main():
-    #target_date = get_yesterday()
-    #log.info(f"=== MLB Harvest starting for {target_date} ===")
-
-    # Fetch MLB data
-    #game_rows     = fetch_game_results(target_date)
-    #standing_rows = fetch_standings(target_date)
-
-    # Authenticate with Microsoft Graph
-    #log.info("Authenticating with Microsoft Graph ...")
-    #token = get_graph_token()
-
-    # Process and upload GameResults
-    #process_file(
-    #    token       = token,
-    #    file_name   = GAME_RESULTS_FILE,
-    #    new_rows    = game_rows,
-    #    columns     = GAME_RESULTS_COLUMNS,
-    #    key_map     = None,   # dict keys already match column names
-    #)
-
-    # Process and upload Standings
-    #process_file(
-    #    token       = token,
-    #    file_name   = STANDINGS_FILE,
-    #    new_rows    = standing_rows,
-    #    columns     = STANDINGS_COLUMNS,
-    #    key_map     = STANDINGS_KEY_MAP,
-    #)
-
-    #log.info("=== MLB Harvest complete ===")
 def main():
     target_date = get_yesterday()
     log.info(f"=== MLB Harvest starting for {target_date} ===")
 
+    # Fetch MLB data
     game_rows     = fetch_game_results(target_date)
     standing_rows = fetch_standings(target_date)
 
+    # Authenticate with Microsoft Graph
     log.info("Authenticating with Microsoft Graph ...")
     token = get_graph_token()
 
-    # Temporary — replace with normal process_file calls once confirmed working
-    debug_onedrive(token)
+    # Process and upload GameResults
+    process_file(
+        token       = token,
+        file_name   = GAME_RESULTS_FILE,
+        new_rows    = game_rows,
+        columns     = GAME_RESULTS_COLUMNS,
+        key_map     = None,   # dict keys already match column names
+    )
+
+    # Process and upload Standings
+    process_file(
+        token       = token,
+        file_name   = STANDINGS_FILE,
+        new_rows    = standing_rows,
+        columns     = STANDINGS_COLUMNS,
+        key_map     = STANDINGS_KEY_MAP,
+    )
+
+    log.info("=== MLB Harvest complete ===")
   
 
 if __name__ == "__main__":
