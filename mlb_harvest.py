@@ -121,9 +121,9 @@ def fetch_game_results(target_date: date) -> list[dict]:
     # hydrate=linescore pulls runs/hits/errors into the schedule response
     # so we avoid a separate API call per game
     raw = statsapi.schedule(
-        date=date_str,
-        sportId=1,              # 1 = MLB (excludes MiLB, international, etc.)
-        hydrate="linescore",
+    date=date_str,
+    sportId=1,
+    params={"hydrate": "linescore"},
     )
 
     rows = []
