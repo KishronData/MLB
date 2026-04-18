@@ -37,12 +37,12 @@ jobs:
     steps:
       # Step 1: Check out the repository so the runner has access to mlb_harvest.py
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # Step 2: Set up the Python version. 3.11+ is recommended for the
       # dict | None union type hint syntax used in the script.
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
