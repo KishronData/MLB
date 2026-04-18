@@ -36,7 +36,7 @@ import msal              # Microsoft Authentication Library: pip install msal
 # ---------------------------------------------------------------------------
 
 # The MLB season year to pull data for. Change this each new season.
-SEASON_YEAR = 2025
+SEASON_YEAR = 2026
 
 # Only pull games of these types. "R" = Regular Season, "P" = Postseason.
 # Excludes Spring Training ("S") and All-Star ("A").
@@ -45,11 +45,11 @@ VALID_GAME_TYPES = {"R", "P"}
 # OneDrive folder path where Excel files will be stored.
 # Use forward slashes. This folder must already exist in OneDrive.
 # Example: "MLB Data/2025" or just "MLB Data"
-ONEDRIVE_FOLDER = "MLB Data/2025"
+ONEDRIVE_FOLDER = "Projects/MLB/Data"
 
 # File names for each output workbook. Change to archive a prior season.
-GAME_RESULTS_FILE = "GameResults_2025.xlsx"
-STANDINGS_FILE    = "Standings_2025.xlsx"
+GAME_RESULTS_FILE = "GameResults_2026.xlsx"
+STANDINGS_FILE    = "Standings_2026.xlsx"
 
 # ---------------------------------------------------------------------------
 # MICROSOFT GRAPH / AZURE AD CREDENTIALS
