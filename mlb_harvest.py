@@ -102,99 +102,91 @@ def format_date_iso(d: date) -> str:
 def fetch_game_results(target_date: date) -> list[dict]:
     """
     Fetch completed game results for a given date.
-
-    Returns a list of row dicts, one per team per game. So a single game
-    produces two rows: one for the home team and one for the away team.
-    This structure makes Power BI analysis (runs scored vs. allowed, W/L)
-    straightforward with simple filters.
-
-    Filters applied:
-      - Only games with status "Final" (excludes postponed/suspended)
-      - Only VALID_GAME_TYPES (Regular Season and Postseason)
-      - Only SEASON_YEAR (guards against off-season edge cases)
+    Calls the MLB Stats API directly via requests instead of the statsapi
+    wrapper, which has inconsistent support for the hydrate parameter.
     """
     date_str = format_date_for_api(target_date)
     iso_str  = format_date_iso(target_date)
 
     log.info(f"Fetching game schedule for {date_str} ...")
 
-    # hydrate=linescore pulls runs/hits/errors into the schedule response
-    # so we avoid a separate API call per game
-    raw = statsapi.schedule(
-    date=date_str,
-    sportId=1,
-    params={"hydrate": "linescore"},
-    )
+    # Call the MLB Stats API directly — no wrapper quirks
+    url = "https://statsapi.mlb.com/api/v1/schedule"
+    params = {
+        "sportId":   1,
+        "date":      target_date.strftime("%Y-%m-%d"),  # API prefers YYYY-MM-DD
+        "hydrate":   "linescore",
+        "gameType":  "R,P",   # Regular Season and Postseason only
+    }
+    resp = requests.get(url, params=params, timeout=30)
+    resp.raise_for_status()
+    data = resp.json()
 
     rows = []
-    for game in raw:
-        # Skip games that haven't finished (postponed, rain delay, etc.)
-        if game.get("status") != "Final":
-            log.debug(f"Skipping non-final game: {game.get('game_id')} — {game.get('status')}")
-            continue
+    for game_date in data.get("dates", []):
+        for game in game_date.get("games", []):
 
-        # Skip game types we don't want (Spring Training, All-Star, etc.)
-        game_type = game.get("game_type", "")
-        if game_type not in VALID_GAME_TYPES:
-            log.debug(f"Skipping game type '{game_type}': {game.get('game_id')}")
-            continue
+            # Skip games that haven't finished
+            status = game.get("status", {}).get("detailedState", "")
+            if status != "Final":
+                log.debug(f"Skipping non-final game: {game.get('gamePk')} — {status}")
+                continue
 
-        # Skip if the season year doesn't match (safety net at season edges)
-        if str(game.get("season", "")) != str(SEASON_YEAR):
-            continue
+            # Skip if season year doesn't match
+            if str(game.get("season", "")) != str(SEASON_YEAR):
+                continue
 
-        # game_num is 1 for a normal game, 2 for the second game of a doubleheader
-        game_num       = game.get("doubleheader_status", "N")  # "N","Y","S"
-        # Normalize: if it's a single game, game number = 1
-        # For doubleheaders the API returns game_num (1 or 2) in the field below
-        game_number    = game.get("game_num", 1)               # 1 or 2
+            game_type   = game.get("gameType", "")
+            game_number = game.get("gameNumber", 1)  # 1 or 2 for doubleheaders
+            game_id     = game.get("gamePk", "")
 
-        home_team      = game.get("home_name", "")
-        away_team      = game.get("away_name", "")
-        home_runs      = game.get("home_score", 0)
-        away_runs      = game.get("away_score", 0)
-        winning_team   = game.get("winning_team", "")
-        game_id        = game.get("game_id", "")
+            # Postseason series info (empty for regular season)
+            series_desc  = game.get("seriesDescription", "")
+            series_game  = game.get("seriesGameNumber", "")
 
-        # Postseason series info (empty strings for regular season)
-        series_desc    = game.get("series_description", "")    # e.g. "World Series"
-        series_game    = game.get("series_game_number", "")    # e.g. 3
+            home         = game.get("teams", {}).get("home", {})
+            away         = game.get("teams", {}).get("away", {})
+            home_team    = home.get("team", {}).get("name", "")
+            away_team    = away.get("team", {}).get("name", "")
+            home_runs    = home.get("score", 0)
+            away_runs    = away.get("score", 0)
+            home_won     = home.get("isWinner", False)
 
-        # --- Home team row ---
-        rows.append({
-            "GameDate":        iso_str,
-            "Season":          SEASON_YEAR,
-            "GameType":        game_type,          # "R" or "P"
-            "SeriesDesc":      series_desc,        # blank for regular season
-            "SeriesGameNum":   series_game,        # blank for regular season
-            "GameNumber":      game_number,        # 1 or 2 (doubleheader)
-            "GameID":          game_id,
-            "Team":            home_team,
-            "HomeAway":        "Home",
-            "Opponent":        away_team,
-            "RunsScored":      home_runs,
-            "RunsAllowed":     away_runs,
-            "Win":             1 if home_team == winning_team else 0,
-            "Loss":            0 if home_team == winning_team else 1,
-        })
+            # --- Home team row ---
+            rows.append({
+                "GameDate":      iso_str,
+                "Season":        SEASON_YEAR,
+                "GameType":      game_type,
+                "SeriesDesc":    series_desc,
+                "SeriesGameNum": series_game,
+                "GameNumber":    game_number,
+                "GameID":        game_id,
+                "Team":          home_team,
+                "HomeAway":      "Home",
+                "Opponent":      away_team,
+                "RunsScored":    home_runs,
+                "RunsAllowed":   away_runs,
+                "Win":           1 if home_won else 0,
+                "Loss":          0 if home_won else 1,
+            })
 
-        # --- Away team row ---
-        rows.append({
-            "GameDate":        iso_str,
-            "Season":          SEASON_YEAR,
-            "GameType":        game_type,
-            "SeriesDesc":      series_desc,
-            "SeriesGameNum":   series_game,
-            "GameNumber":      game_number,
-            "GameID":          game_id,
-            "Team":            away_team,
-            "HomeAway":        "Away",
-            "Opponent":        home_team,
-            "RunsScored":      away_runs,
-            "RunsAllowed":     home_runs,
-            "Win":             1 if away_team == winning_team else 0,
-            "Loss":            0 if away_team == winning_team else 1,
-        })
+            # --- Away team row ---
+            rows.append({
+                "GameDate":      iso_str,
+                "Season":        SEASON_YEAR,
+                "GameType":      game_type,
+                "SeriesDesc":    series_desc,
+                "SeriesGameNum": series_game,
+                "GameNumber":    game_number,
+                "GameID":        game_id,
+                "Team":          away_team,
+                "HomeAway":      "Away",
+                "Opponent":      home_team,
+                "RunsScored":    away_runs,
+                "RunsAllowed":   home_runs,
+                "Win":           0 if home_won else 1,
+                "Loss":          1 if home_won else 0,
+            })
 
     log.info(f"Found {len(rows) // 2} completed game(s) → {len(rows)} team-game rows.")
     return rows
