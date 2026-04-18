@@ -537,53 +537,53 @@ def process_file(token: str, file_name: str, new_rows: list[dict],
 
 
 # MAIN that gets game data from yesterday
-def main():
-    target_date = get_yesterday()
-    log.info(f"=== MLB Harvest starting for {target_date} ===")
+#def main():
+#    target_date = get_yesterday()
+#    log.info(f"=== MLB Harvest starting for {target_date} ===")
 
     # Fetch MLB data
-    game_rows     = fetch_game_results(target_date)
-    standing_rows = fetch_standings(target_date)
+#    game_rows     = fetch_game_results(target_date)
+#    standing_rows = fetch_standings(target_date)
 
     # Authenticate with Microsoft Graph
-    log.info("Authenticating with Microsoft Graph ...")
-    token = get_graph_token()
+#    log.info("Authenticating with Microsoft Graph ...")
+#    token = get_graph_token()
 
     # Process and upload GameResults
-    process_file(
-        token       = token,
-        file_name   = GAME_RESULTS_FILE,
-        new_rows    = game_rows,
-        columns     = GAME_RESULTS_COLUMNS,
-        key_map     = None,   # dict keys already match column names
-    )
+#    process_file(
+#        token       = token,
+#        file_name   = GAME_RESULTS_FILE,
+#        new_rows    = game_rows,
+#        columns     = GAME_RESULTS_COLUMNS,
+#        key_map     = None,   # dict keys already match column names
+#    )
 
     # Process and upload Standings
-    process_file(
-        token       = token,
-        file_name   = STANDINGS_FILE,
-        new_rows    = standing_rows,
-        columns     = STANDINGS_COLUMNS,
-        key_map     = STANDINGS_KEY_MAP,
-    )
+#    process_file(
+#        token       = token,
+#        file_name   = STANDINGS_FILE,
+#        new_rows    = standing_rows,
+#        columns     = STANDINGS_COLUMNS,
+#        key_map     = STANDINGS_KEY_MAP,
+#    )
 
-    log.info("=== MLB Harvest complete ===")
+#    log.info("=== MLB Harvest complete ===")
 
 
 # MAIN that backfills data as needed
-#from datetime import date, timedelta
+from datetime import date, timedelta
 
-#def main():
-#    start = date(2026, 3, 20)   # Opening Day 2025
-#    end   = date(2026, 4, 16)   # End of regular season (adjust as needed)
-#    d     = start
-#    token = get_graph_token()
-#    while d <= end:
-#        game_rows     = fetch_game_results(d)
-#        standing_rows = fetch_standings(d)
-#        process_file(token, GAME_RESULTS_FILE, game_rows,     GAME_RESULTS_COLUMNS)
-#        process_file(token, STANDINGS_FILE,    standing_rows, STANDINGS_COLUMNS, STANDINGS_KEY_MAP)
-#        d += timedelta(days=1)
+def main():
+    start = date(2026, 3, 20)   # Opening Day 2025
+    end   = date(2026, 4, 17)   # End of regular season (adjust as needed)
+    d     = start
+    token = get_graph_token()
+    while d <= end:
+        game_rows     = fetch_game_results(d)
+        standing_rows = fetch_standings(d)
+        process_file(token, GAME_RESULTS_FILE, game_rows,     GAME_RESULTS_COLUMNS)
+        process_file(token, STANDINGS_FILE,    standing_rows, STANDINGS_COLUMNS, STANDINGS_KEY_MAP)
+        d += timedelta(days=1)
   
 
 if __name__ == "__main__":
