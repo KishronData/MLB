@@ -574,8 +574,8 @@ def process_file(token: str, file_name: str, new_rows: list[dict],
 from datetime import date, timedelta
 
 def main():
-    start = date(2026, 3, 20)   # Opening Day 2025
-    end   = date(2026, 4, 17)   # End of regular season (adjust as needed)
+    start = date(2026, 4, 18)   # Opening Day 2025
+    end   = date(2026, 4, 18)   # End of regular season (adjust as needed)
     d     = start
     token = get_graph_token()
     while d <= end:
